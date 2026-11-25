@@ -1109,12 +1109,21 @@
         };
 
         // ================= INITIAL DATA & STATE =================
+        const DEFAULT_FIREBASE_PRIMARY_URL = 'https://data-warga-rt01-8df1b-default-rtdb.asia-southeast1.firebasedatabase.app';
+        const DEFAULT_FIREBASE_FALLBACK_URL = 'https://data-warga-rt01-8df1b-default-rtdb.firebaseio.com';
+        const DEFAULT_FIREBASE_SYNC_KEY = 'rt01_utama';
+
         const INITIAL_DATA = {
             updatedAt: 1732440000000,
             dataVersion: 1,
             dataChecksum: '',
             dataLocked: false,
             devices: {},
+            cloudConfig: {
+                enabled: true,
+                databaseURL: DEFAULT_FIREBASE_PRIMARY_URL,
+                syncKey: DEFAULT_FIREBASE_SYNC_KEY
+            },
             settings: {
                 rt: '001',
                 rw: '002',
@@ -1124,7 +1133,8 @@
                 kota: 'Kota Tasikmalaya',
                 tarifIuran: 50000,
                 adminPin: '123456',
-                firebaseUrl: '',
+                firebaseUrl: DEFAULT_FIREBASE_PRIMARY_URL,
+                syncKey: DEFAULT_FIREBASE_SYNC_KEY,
                 lockReason: 'Mode Perlindungan Integritas Data Aktif'
             },
             warga: [
@@ -1566,6 +1576,16 @@
         // ================= STATE NORMALIZATION & PERMANENT SYNC =================
         function normalizeStateShape(rawObj) {
             const safeRaw = (rawObj && typeof rawObj === 'object') ? rawObj : {};
+            const rawSettings = (safeRaw.settings && typeof safeRaw.settings === 'object') ? safeRaw.settings : {};
+            const rawCloud = (safeRaw.cloudConfig && typeof safeRaw.cloudConfig === 'object') ? safeRaw.cloudConfig : {};
+            const resolvedDbUrl = String(
+                rawCloud.databaseURL || rawSettings.firebaseUrl || DEFAULT_FIREBASE_PRIMARY_URL
+            ).trim() || DEFAULT_FIREBASE_PRIMARY_URL;
+            const resolvedSyncKey = String(
+                rawCloud.syncKey || rawSettings.syncKey || DEFAULT_FIREBASE_SYNC_KEY
+            ).trim().replace(/^\/+|\/+$/g, '') || DEFAULT_FIREBASE_SYNC_KEY;
+            const resolvedEnabled = rawCloud.enabled !== undefined ? Boolean(rawCloud.enabled) : true;
+
             const merged = {
                 ...INITIAL_DATA,
                 ...safeRaw,
@@ -1573,144 +1593,113 @@
                 dataVersion: Math.max(1, Number(safeRaw.dataVersion) || 1),
                 dataLocked: Boolean(safeRaw.dataLocked),
                 devices: (safeRaw.devices && typeof safeRaw.devices === 'object') ? { ...safeRaw.devices } : {},
-                settings: { ...INITIAL_DATA.settings, ...(safeRaw.settings || {}) },
+                cloudConfig: {
+                    enabled: resolvedEnabled,
+                    databaseURL: resolvedDbUrl,
+                    syncKey: resolvedSyncKey
+                },
+                settings: {
+                    ...INITIAL_DATA.settings,
+                    ...rawSettings,
+                    firebaseUrl: resolvedDbUrl,
+                    syncKey: resolvedSyncKey
+                },
                 iuran: { ...(safeRaw.iuran || {}) },
                 kas: Array.isArray(safeRaw.kas) ? safeRaw.kas : INITIAL_DATA.kas.slice(),
                 pengumuman: Array.isArray(safeRaw.pengumuman) ? safeRaw.pengumuman : INITIAL_DATA.pengumuman.slice(),
                 aduan: Array.isArray(safeRaw.aduan) ? safeRaw.aduan : INITIAL_DATA.aduan.slice(),
                 suratRequests: Array.isArray(safeRaw.suratRequests) ? safeRaw.suratRequests : INITIAL_DATA.suratRequests.slice(),
-                wargaPasswords: { ...(safeRaw.wargaPasswords || {}) },
-                currentWargaContext: (safeRaw.currentWargaContext && typeof safeRaw.currentWargaContext === 'object')
-                    ? {
-                        kkId: safeRaw.currentWargaContext.kkId || null,
-                        memberIndex: typeof safeRaw.currentWargaContext.memberIndex === 'number' ? safeRaw.currentWargaContext.memberIndex : null,
-                        nik: safeRaw.currentWargaContext.nik || '',
-                        noKK: safeRaw.currentWargaContext.noKK || ''
-                    }
-                    : null
+                wargaPasswords: (safeRaw.wargaPasswords && typeof safeRaw.wargaPasswords === 'object') ? { ...safeRaw.wargaPasswords } : {},
+                warga: Array.isArray(safeRaw.warga) ? safeRaw.warga.map(w => ({
+                    ...w,
+                    anggota: Array.isArray(w.anggota) ? w.anggota : []
+                })) : JSON.parse(JSON.stringify(INITIAL_DATA.warga)),
+                currentWargaContext: safeRaw.currentWargaContext || null
             };
-
-            if (Array.isArray(safeRaw.warga)) {
-                merged.warga = safeRaw.warga.map(kk => {
-                    const { customPassword, ...cleanKk } = kk || {};
-                    if (customPassword && typeof customPassword === 'string' && customPassword.trim()) {
-                        const key = buildWargaCredentialKey(cleanKk.id, cleanKk.nik, 'kk');
-                        if (key && !merged.wargaPasswords[key]) {
-                            merged.wargaPasswords[key] = customPassword.trim();
-                        }
-                    }
-                    const cleanAnggota = Array.isArray(cleanKk.anggota)
-                        ? cleanKk.anggota.map((member, idx) => {
-                            const { customPassword: mPw, ...cleanMember } = member || {};
-                            if (mPw && typeof mPw === 'string' && mPw.trim()) {
-                                const mKey = buildWargaCredentialKey(cleanKk.id, cleanMember.nik || `anggota-${idx}`, 'member', idx);
-                                if (mKey && !merged.wargaPasswords[mKey]) {
-                                    merged.wargaPasswords[mKey] = mPw.trim();
-                                }
-                            }
-                            return cleanMember;
-                        })
-                        : [];
-                    return { ...cleanKk, anggota: cleanAnggota };
-                });
-            } else {
-                merged.warga = JSON.parse(JSON.stringify(INITIAL_DATA.warga));
-            }
-
             merged.dataChecksum = computeStateChecksum(merged);
             return merged;
         }
 
-        function setSyncIndicator(modeText, dotColorClass = 'bg-emerald-400') {
-            const labelEl = document.getElementById('cloud-sync-label');
-            const dotEl = document.getElementById('cloud-sync-dot');
-            const lockPill = document.getElementById('data-lock-pill');
-            const activeCount = getActiveDevicesList().length;
-            const wBadge = document.getElementById('w-device-count-badge');
-            const aBadge = document.getElementById('a-device-count-badge');
-
-            if (labelEl) {
-                const hasCloud = Boolean(buildFirebaseEndpoint(state.settings?.firebaseUrl));
-                labelEl.textContent = modeText || (hasCloud ? `Terhubung Cloud (${activeCount} HP)` : `Tersambung (${activeCount} HP)`);
-            }
-            if (dotEl) dotEl.className = `w-1.5 h-1.5 rounded-full ${dotColorClass}`;
-            if (lockPill) {
-                lockPill.classList.toggle('hidden', !state.dataLocked);
-                lockPill.classList.toggle('inline-flex', Boolean(state.dataLocked));
-            }
-            if (wBadge) wBadge.textContent = `${activeCount} HP`;
-            if (aBadge) aBadge.textContent = `${activeCount} HP Aktif`;
-        }
-
-        function writeStateToLocalStores(nextState) {
-            const serialized = JSON.stringify(nextState);
+        function writeStateToLocalStores(targetState) {
             try {
+                const serialized = JSON.stringify(targetState);
                 localStorage.setItem(STORAGE_KEY, serialized);
+                window.name = WINDOW_NAME_PREFIX + serialized;
             } catch (e) {}
-            try {
-                if (typeof window.name === 'string' && (!window.name || window.name.startsWith(WINDOW_NAME_PREFIX))) {
-                    window.name = WINDOW_NAME_PREFIX + serialized;
-                }
-            } catch (e) {}
-        }
-
-        function readStateFromLocalStores() {
-            let fromStorage = null;
-            let fromWindowName = null;
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                if (raw) fromStorage = normalizeStateShape(JSON.parse(raw));
-            } catch (e) {}
-            try {
-                if (typeof window.name === 'string' && window.name.startsWith(WINDOW_NAME_PREFIX)) {
-                    fromWindowName = normalizeStateShape(JSON.parse(window.name.slice(WINDOW_NAME_PREFIX.length)));
-                }
-            } catch (e) {}
-
-            if (fromStorage && fromWindowName) {
-                return Number(fromWindowName.updatedAt || 0) > Number(fromStorage.updatedAt || 0) ? fromWindowName : fromStorage;
-            }
-            return fromStorage || fromWindowName || normalizeStateShape({ ...INITIAL_DATA, currentWargaContext: null });
         }
 
         function loadLocalState() {
-            state = readStateFromLocalStores();
-            writeStateToLocalStores(state);
+            let loaded = null;
             try {
-                const sRaw = localStorage.getItem(SESSION_KEY);
-                if (sRaw) {
-                    const parsedSession = JSON.parse(sRaw);
-                    if (parsedSession && parsedSession.role === 'warga') {
-                        session = {
-                            role: 'warga',
-                            kkId: parsedSession.kkId || state.currentWargaContext?.kkId || null,
-                            memberIndex: typeof parsedSession.memberIndex === 'number'
-                                ? parsedSession.memberIndex
-                                : (state.currentWargaContext?.memberIndex ?? null),
-                            nik: parsedSession.nik || state.currentWargaContext?.nik || '',
-                            noKK: parsedSession.noKK || state.currentWargaContext?.noKK || ''
-                        };
-                    } else {
-                        session = parsedSession;
-                    }
-                } else if (state.currentWargaContext && (state.currentWargaContext.kkId || state.currentWargaContext.nik || state.currentWargaContext.noKK)) {
-                    session = {
-                        role: 'warga',
-                        kkId: state.currentWargaContext.kkId || null,
-                        memberIndex: state.currentWargaContext.memberIndex ?? null,
-                        nik: state.currentWargaContext.nik || '',
-                        noKK: state.currentWargaContext.noKK || ''
-                    };
-                }
+                const rawLocal = localStorage.getItem(STORAGE_KEY);
+                if (rawLocal) loaded = JSON.parse(rawLocal);
+            } catch (e) {}
+            if (!loaded && typeof window.name === 'string' && window.name.startsWith(WINDOW_NAME_PREFIX)) {
+                try {
+                    loaded = JSON.parse(window.name.slice(WINDOW_NAME_PREFIX.length));
+                } catch (e) {}
+            }
+            if (loaded && typeof loaded === 'object') {
+                state = normalizeStateShape(loaded);
+            }
+            try {
+                const rawSession = localStorage.getItem(SESSION_KEY);
+                if (rawSession) session = JSON.parse(rawSession);
             } catch (e) {}
         }
 
-        function buildFirebaseEndpoint(rawUrl) {
-            const cleaned = String(rawUrl || '').trim().replace(/\/+$/, '');
-            if (!cleaned) return '';
-            if (cleaned.endsWith('/data_warga_01.json')) return cleaned;
-            if (cleaned.endsWith('.json')) return cleaned;
-            return `${cleaned}/data_warga_01.json`;
+        function setSyncIndicator(text, dotColorClass = 'bg-emerald-400') {
+            const labelEl = document.getElementById('cloud-sync-label');
+            const dotEl = document.getElementById('cloud-sync-dot');
+            const lockPillEl = document.getElementById('data-lock-pill');
+            const wDevBadge = document.getElementById('w-device-count-badge');
+            const aDevBadge = document.getElementById('a-device-count-badge');
+            const devCount = getActiveDevicesList().length;
+
+            if (labelEl) labelEl.textContent = text;
+            if (dotEl) dotEl.className = `w-1.5 h-1.5 rounded-full ${dotColorClass}`;
+            if (wDevBadge) wDevBadge.textContent = `${devCount} HP`;
+            if (aDevBadge) aDevBadge.textContent = `${devCount} HP`;
+            if (lockPillEl) {
+                if (state.dataLocked) {
+                    lockPillEl.classList.remove('hidden');
+                    lockPillEl.classList.add('inline-flex');
+                } else {
+                    lockPillEl.classList.add('hidden');
+                    lockPillEl.classList.remove('inline-flex');
+                }
+            }
+        }
+
+        function buildFirebaseEndpoint(rawUrl, rawSyncKey) {
+            const base = String(rawUrl || state?.cloudConfig?.databaseURL || state?.settings?.firebaseUrl || DEFAULT_FIREBASE_PRIMARY_URL)
+                .trim()
+                .replace(/\/+$/, '');
+            if (!base) return '';
+            const key = String(rawSyncKey || state?.cloudConfig?.syncKey || state?.settings?.syncKey || DEFAULT_FIREBASE_SYNC_KEY)
+                .trim()
+                .replace(/^\/+|\/+$/g, '') || DEFAULT_FIREBASE_SYNC_KEY;
+            if (base.endsWith('.json')) return base;
+            return `${base}/${key}.json`;
+        }
+
+        function getCandidateFirebaseBases(preferredBase) {
+            const cleanPreferred = String(preferredBase || '').trim().replace(/\/+$/, '');
+            const candidates = [];
+            if (cleanPreferred) candidates.push(cleanPreferred);
+            if (!candidates.includes(DEFAULT_FIREBASE_PRIMARY_URL)) candidates.push(DEFAULT_FIREBASE_PRIMARY_URL);
+            if (!candidates.includes(DEFAULT_FIREBASE_FALLBACK_URL)) candidates.push(DEFAULT_FIREBASE_FALLBACK_URL);
+            return candidates;
+        }
+
+        function persistResolvedFirebaseBase(workingBase) {
+            const cleanBase = String(workingBase || '').trim().replace(/\/+$/, '');
+            if (!cleanBase) return;
+            const syncKey = state.cloudConfig?.syncKey || state.settings?.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
+            state.cloudConfig = { enabled: true, databaseURL: cleanBase, syncKey };
+            state.settings.firebaseUrl = cleanBase;
+            state.settings.syncKey = syncKey;
+            writeStateToLocalStores(state);
         }
 
         function mergeIncomingState(incomingRaw, sourceLabel = 'Sync') {
@@ -1720,62 +1709,75 @@
             const remoteTs = Number(incoming.updatedAt || 0);
             const localVer = Number(state.dataVersion || 1);
             const remoteVer = Number(incoming.dataVersion || 1);
+            const localIsSeedOnly = localVer <= 1 && localTs <= INITIAL_DATA.updatedAt;
 
-            const isNewer = (remoteVer > localVer) || (remoteVer === localVer && remoteTs >= localTs);
+            const isNewer = localIsSeedOnly || (remoteVer > localVer) || (remoteVer === localVer && remoteTs > localTs);
             if (isNewer) {
-                const prevFirebaseUrl = state.settings.firebaseUrl;
+                const prevFirebaseUrl = state.cloudConfig?.databaseURL || state.settings.firebaseUrl || DEFAULT_FIREBASE_PRIMARY_URL;
+                const prevSyncKey = state.cloudConfig?.syncKey || state.settings.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
                 const prevCtx = state.currentWargaContext;
                 const mergedDevices = { ...(state.devices || {}), ...(incoming.devices || {}) };
+                const activeDbUrl = incoming.cloudConfig?.databaseURL || incoming.settings.firebaseUrl || prevFirebaseUrl;
+                const activeSyncKey = incoming.cloudConfig?.syncKey || incoming.settings.syncKey || prevSyncKey;
                 state = normalizeStateShape({
                     ...incoming,
                     devices: mergedDevices,
                     currentWargaContext: prevCtx || incoming.currentWargaContext,
+                    cloudConfig: {
+                        enabled: true,
+                        databaseURL: activeDbUrl,
+                        syncKey: activeSyncKey
+                    },
                     settings: {
                         ...incoming.settings,
-                        firebaseUrl: incoming.settings.firebaseUrl || prevFirebaseUrl
+                        firebaseUrl: activeDbUrl,
+                        syncKey: activeSyncKey
                     }
                 });
                 touchCurrentDeviceHeartbeat(state);
                 writeStateToLocalStores(state);
                 renderCurrentScreen();
-                setSyncIndicator(
-                    buildFirebaseEndpoint(state.settings.firebaseUrl)
-                        ? `Terhubung Cloud (${getActiveDevicesList().length} HP)`
-                        : `Tersambung (${getActiveDevicesList().length} HP)`,
-                    'bg-emerald-400'
-                );
+                setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
                 return true;
             }
             return false;
         }
 
         async function pushStateToFirebase() {
-            const endpoint = buildFirebaseEndpoint(state.settings.firebaseUrl);
-            if (!endpoint) {
+            if (state.cloudConfig && state.cloudConfig.enabled === false) {
                 setSyncIndicator(`Tersambung (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
                 return;
             }
+            const candidates = getCandidateFirebaseBases(state.cloudConfig?.databaseURL || state.settings.firebaseUrl);
+            const syncKey = state.cloudConfig?.syncKey || state.settings.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
             setSyncIndicator('Menyinkronkan...', 'bg-amber-300');
-            try {
-                const payload = { ...state, syncedAt: Date.now() };
-                const res = await fetch(endpoint, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (res.ok) {
-                    setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
-                } else {
-                    setSyncIndicator('Lokal / Cek URL Cloud', 'bg-amber-400');
-                }
-            } catch (e) {
-                setSyncIndicator('Lokal / Menunggu Cloud', 'bg-amber-400');
+
+            for (const base of candidates) {
+                const endpoint = buildFirebaseEndpoint(base, syncKey);
+                try {
+                    const payload = { ...state, syncedAt: Date.now() };
+                    const res = await fetch(endpoint, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        if (base !== (state.cloudConfig?.databaseURL || state.settings.firebaseUrl)) {
+                            persistResolvedFirebaseBase(base);
+                            startFirebaseRealtimeStream();
+                        }
+                        setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
+                        return;
+                    }
+                } catch (e) {}
             }
+            setSyncIndicator('Lokal / Menunggu Cloud', 'bg-amber-400');
         }
 
         async function patchStateToFirebase(partialData) {
-            const endpoint = buildFirebaseEndpoint(state.settings.firebaseUrl);
-            if (!endpoint || !partialData || typeof partialData !== 'object') return;
+            if ((state.cloudConfig && state.cloudConfig.enabled === false) || !partialData || typeof partialData !== 'object') return;
+            const endpoint = buildFirebaseEndpoint(state.cloudConfig?.databaseURL || state.settings.firebaseUrl);
+            if (!endpoint) return;
             try {
                 await fetch(endpoint, {
                     method: 'PATCH',
@@ -1792,40 +1794,52 @@
         }
 
         async function pullStateFromFirebase(forceAdopt = false) {
-            const endpoint = buildFirebaseEndpoint(state.settings.firebaseUrl);
-            if (!endpoint) {
+            if (state.cloudConfig && state.cloudConfig.enabled === false) {
                 setSyncIndicator(`Tersambung (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
                 return false;
             }
-            try {
-                const res = await fetch(endpoint, { cache: 'no-store' });
-                if (!res.ok) {
-                    setSyncIndicator('Lokal / Cek URL Cloud', 'bg-amber-400');
-                    return false;
-                }
-                const remote = await res.json();
-                if (remote && typeof remote === 'object') {
-                    if (forceAdopt) {
-                        const prevUrl = state.settings.firebaseUrl;
-                        state = normalizeStateShape({
-                            ...remote,
-                            settings: { ...remote.settings, firebaseUrl: remote.settings?.firebaseUrl || prevUrl }
-                        });
-                        touchCurrentDeviceHeartbeat(state);
-                        writeStateToLocalStores(state);
-                        renderCurrentScreen();
-                    } else {
-                        mergeIncomingState(remote, 'Firebase');
+            const candidates = getCandidateFirebaseBases(state.cloudConfig?.databaseURL || state.settings.firebaseUrl);
+            const syncKey = state.cloudConfig?.syncKey || state.settings.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
+
+            for (const base of candidates) {
+                const endpoint = buildFirebaseEndpoint(base, syncKey);
+                try {
+                    const res = await fetch(endpoint, { cache: 'no-store' });
+                    if (!res.ok) continue;
+
+                    const previousBase = state.cloudConfig?.databaseURL || state.settings.firebaseUrl;
+                    if (base !== previousBase) {
+                        persistResolvedFirebaseBase(base);
+                        startFirebaseRealtimeStream();
                     }
-                    setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
-                    return true;
-                }
-                setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
-                return false;
-            } catch (e) {
-                setSyncIndicator('Lokal / Menunggu Cloud', 'bg-amber-400');
-                return false;
+
+                    const remote = await res.json();
+                    if (remote && typeof remote === 'object') {
+                        if (forceAdopt) {
+                            state = normalizeStateShape({
+                                ...remote,
+                                cloudConfig: { enabled: true, databaseURL: base, syncKey },
+                                settings: { ...remote.settings, firebaseUrl: base, syncKey }
+                            });
+                            touchCurrentDeviceHeartbeat(state);
+                            writeStateToLocalStores(state);
+                            renderCurrentScreen();
+                        } else {
+                            mergeIncomingState(remote, 'Firebase');
+                        }
+                        setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
+                        return true;
+                    } else if (remote === null) {
+                        if (Number(state.dataVersion || 1) > 1 || Number(state.updatedAt || 0) > INITIAL_DATA.updatedAt) {
+                            await pushStateToFirebase();
+                        }
+                        setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
+                        return true;
+                    }
+                } catch (e) {}
             }
+            setSyncIndicator('Lokal / Menunggu Cloud', 'bg-amber-400');
+            return false;
         }
 
         function broadcastStateChange() {
@@ -1887,25 +1901,27 @@
 
         window.testFirebaseConnection = async function() {
             const inputUrl = (document.getElementById('st-firebase-url')?.value || '').trim();
-            const endpoint = buildFirebaseEndpoint(inputUrl);
-            if (!endpoint) {
-                showToast('Masukkan URL Firebase Realtime Database terlebih dahulu', true);
-                return;
-            }
+            const candidates = getCandidateFirebaseBases(inputUrl);
+            const syncKey = state.cloudConfig?.syncKey || state.settings?.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
             setSyncIndicator('Menyinkronkan...', 'bg-amber-300');
-            try {
-                const res = await fetch(endpoint, { cache: 'no-store' });
-                if (res.ok) {
-                    setSyncIndicator('Tersinkronisasi Permanen', 'bg-emerald-400');
-                    showToast('Koneksi Firebase Realtime Database berhasil!');
-                } else {
-                    setSyncIndicator('Lokal / Cek URL Cloud', 'bg-amber-400');
-                    showToast('Koneksi gagal (periksa aturan/URL Firebase)', true);
-                }
-            } catch (e) {
-                setSyncIndicator('Lokal / Menunggu Cloud', 'bg-amber-400');
-                showToast('Tidak dapat menjangkau URL Firebase', true);
+
+            for (const base of candidates) {
+                const endpoint = buildFirebaseEndpoint(base, syncKey);
+                try {
+                    const res = await fetch(endpoint, { cache: 'no-store' });
+                    if (res.ok) {
+                        const urlInputEl = document.getElementById('st-firebase-url');
+                        if (urlInputEl) urlInputEl.value = base;
+                        persistResolvedFirebaseBase(base);
+                        startFirebaseRealtimeStream();
+                        setSyncIndicator(`Terhubung Cloud (${getActiveDevicesList().length} HP)`, 'bg-emerald-400');
+                        showToast(`Koneksi Firebase berhasil (${base})`);
+                        return;
+                    }
+                } catch (e) {}
             }
+            setSyncIndicator('Lokal / Cek URL Cloud', 'bg-amber-400');
+            showToast('Koneksi gagal (periksa URL atau Rules Firebase)', true);
         };
 
         async function saveState(options = { syncCloud: true }) {
@@ -3535,6 +3551,13 @@
         window.saveSettings = async function(e) {
             e.preventDefault();
             state.dataLocked = Boolean(document.getElementById('st-data-locked')?.checked);
+            const nextFirebaseUrl = document.getElementById('st-firebase-url').value.trim() || DEFAULT_FIREBASE_PRIMARY_URL;
+            const syncKey = state.cloudConfig?.syncKey || state.settings?.syncKey || DEFAULT_FIREBASE_SYNC_KEY;
+            state.cloudConfig = {
+                enabled: true,
+                databaseURL: nextFirebaseUrl,
+                syncKey
+            };
             state.settings = {
                 ...state.settings,
                 rt: document.getElementById('st-rt').value.trim(),
@@ -3545,7 +3568,8 @@
                 kota: document.getElementById('st-kota').value.trim(),
                 tarifIuran: Number(document.getElementById('st-tarif').value) || 50000,
                 adminPin: document.getElementById('st-pin').value.trim() || '123456',
-                firebaseUrl: document.getElementById('st-firebase-url').value.trim()
+                firebaseUrl: nextFirebaseUrl,
+                syncKey
             };
             closeModal('modal-settings');
             await saveState();
@@ -3634,7 +3658,7 @@
         }
 
         // Boot App
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             loadLocalState();
             touchCurrentDeviceHeartbeat(state);
             writeStateToLocalStores(state);
@@ -3644,15 +3668,15 @@
                 touchCurrentDeviceHeartbeat(state);
                 writeStateToLocalStores(state);
                 setSyncIndicator(
-                    buildFirebaseEndpoint(state.settings?.firebaseUrl)
+                    buildFirebaseEndpoint(state.cloudConfig?.databaseURL || state.settings?.firebaseUrl)
                         ? `Terhubung Cloud (${getActiveDevicesList().length} HP)`
                         : `Tersambung (${getActiveDevicesList().length} HP)`,
                     'bg-emerald-400'
                 );
             }, 30000);
             renderCurrentScreen();
+            await pullStateFromFirebase(false);
             startFirebaseRealtimeStream();
-            pullStateFromFirebase(false);
             cloudPollTimer = setInterval(() => pullStateFromFirebase(false), 10000);
         });
     </script>
