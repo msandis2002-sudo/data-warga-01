@@ -1062,7 +1062,67 @@
             <div id="multihp-modal-body" class="space-y-4 text-xs"></div>
         </div>
     </div>
-
+<!-- MODAL TAMBAH ANGGOTA KK MANDIRI (KHUSUS NO. KK AKUN LOGIN) -->
+    <div id="modal-warga-tambah-anggota" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4 no-print">
+        <div class="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto screen-fade">
+            <div class="w-10 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="font-extrabold text-lg text-slate-900">+ Tambah Anggota KK Saya</h3>
+                    <p id="fwa-kk-subtitle" class="text-xs font-mono text-emerald-700">No. KK: -</p>
+                </div>
+                <button type="button" onclick="closeModal('modal-warga-tambah-anggota')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="submitWargaTambahAnggotaKK(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">Nama Lengkap Anggota *</label>
+                    <input type="text" id="fwa-nama" required placeholder="Nama lengkap anggota keluarga" class="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-600">
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Hubungan Keluarga *</label>
+                        <select id="fwa-hubungan" class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-600">
+                            <option value="Istri">Istri</option>
+                            <option value="Suami">Suami</option>
+                            <option value="Anak">Anak</option>
+                            <option value="Orang Tua">Orang Tua</option>
+                            <option value="Famili Lain">Famili Lain</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Kelamin</label>
+                        <select id="fwa-jk" class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs bg-white focus:outline-none focus:border-emerald-600">
+                            <option value="Laki-laki">Laki-laki</option>
+                            <option value="Perempuan">Perempuan</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">NIK (16 Digit)</label>
+                        <input type="text" id="fwa-nik" maxlength="16" inputmode="numeric" placeholder="3278..." class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs font-mono focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Lahir</label>
+                        <input type="date" id="fwa-tgl" class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs focus:outline-none focus:border-emerald-600">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Nama Ayah</label>
+                        <input type="text" id="fwa-ayah" placeholder="Nama ayah" class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Nama Ibu</label>
+                        <input type="text" id="fwa-ibu" placeholder="Nama ibu" class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-xs focus:outline-none focus:border-emerald-600">
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition">
+                    Simpan Anggota ke KK Saya
+                </button>
+            </form>
+        </div>
+    </div>
     <script>
         // ================= DYNAMIC PWA MANIFEST SETUP =================
         (function setupPWAManifest() {
@@ -2451,7 +2511,302 @@
             }
         };
 
+        function renderWargaProfil(kk, activeMemberIndex = null, activePerson = null) {function openWargaTambahAnggotaModal() {
+            const ctx = getLoggedInWargaContext() || resolveCurrentWargaRecord();
+            if (!ctx || !ctx.kk) {
+                showToast('Data Kartu Keluarga akun Anda tidak ditemukan', true);
+                return;
+            }
+            const subEl = document.getElementById('fwa-kk-subtitle');
+            if (subEl) subEl.textContent = `No. KK: ${ctx.kk.noKK || '-'} • ${ctx.kk.nama || '-'}`;
+            const formEl = document.querySelector('#modal-warga-tambah-anggota form');
+            if (formEl) formEl.reset();
+            const ayahEl = document.getElementById('fwa-ayah');
+            const ibuEl = document.getElementById('fwa-ibu');
+            if (ayahEl && ctx.kk.namaAyah) ayahEl.value = ctx.kk.namaAyah;
+            if (ibuEl && ctx.kk.namaIbu) ibuEl.value = ctx.kk.namaIbu;
+            openModal('modal-warga-tambah-anggota');
+        }
+
+        window.openWargaTambahAnggotaModal = openWargaTambahAnggotaModal;
+
+        window.submitWargaTambahAnggotaKK = async function(e) {
+            e.preventDefault();
+            if (!canMutateData(false)) return;
+            const ctx = getLoggedInWargaContext() || resolveCurrentWargaRecord();
+            if (!ctx || !ctx.kk) {
+                showToast('Akses KK tidak valid', true);
+                return;
+            }
+            const ownerNoKK = String(ctx.kk.noKK || '').trim();
+            const targetIdx = state.warga.findIndex(w => w.id === ctx.kk.id && String(w.noKK || '').trim() === ownerNoKK);
+            if (targetIdx === -1) {
+                showToast('Validasi No. KK gagal: hanya dapat mengubah KK sendiri', true);
+                return;
+            }
+
+            const namaVal = (document.getElementById('fwa-nama')?.value || '').trim();
+            if (!namaVal) {
+                showToast('Nama lengkap anggota wajib diisi', true);
+                return;
+            }
+
+            const targetKk = state.warga[targetIdx];
+            if (!Array.isArray(targetKk.anggota)) {
+                targetKk.anggota = [];
+            }
+
+            const newMember = {
+                nama: namaVal,
+                hubungan: (document.getElementById('fwa-hubungan')?.value || 'Anggota Keluarga').trim(),
+                nik: (document.getElementById('fwa-nik')?.value || '').trim() || '-',
+                tanggalLahir: document.getElementById('fwa-tgl')?.value || '',
+                jenisKelamin: document.getElementById('fwa-jk')?.value || 'Laki-laki',
+                namaAyah: (document.getElementById('fwa-ayah')?.value || targetKk.namaAyah || '-').trim() || '-',
+                namaIbu: (document.getElementById('fwa-ibu')?.value || targetKk.namaIbu || '-').trim() || '-'
+            };
+
+            targetKk.anggota.push(newMember);
+            targetKk.jumlahAnggota = Math.max(Number(targetKk.jumlahAnggota) || 0, 1 + targetKk.anggota.length);
+
+            closeModal('modal-warga-tambah-anggota');
+            await saveState();
+            showToast('Anggota keluarga berhasil ditambahkan ke KK Anda');
+        };
+
+        window.keluarkanAnggotaKKSendiri = function(memberIndex) {
+            if (!canMutateData(false)) return;
+            const ctx = getLoggedInWargaContext() || resolveCurrentWargaRecord();
+            if (!ctx || !ctx.kk) return;
+            const ownerNoKK = String(ctx.kk.noKK || '').trim();
+            const targetIdx = state.warga.findIndex(w => w.id === ctx.kk.id && String(w.noKK || '').trim() === ownerNoKK);
+            if (targetIdx === -1) {
+                showToast('Validasi No. KK gagal: hanya dapat mengubah KK sendiri', true);
+                return;
+            }
+
+            const targetKk = state.warga[targetIdx];
+            const members = Array.isArray(targetKk.anggota) ? targetKk.anggota : [];
+            const targetMember = members[memberIndex];
+            if (!targetMember) {
+                showToast('Data anggota tidak ditemukan', true);
+                return;
+            }
+
+            const memberName = typeof targetMember === 'string' ? targetMember : (targetMember.nama || 'Anggota');
+            askConfirm(
+                'Keluarkan Anggota dari KK?',
+                `Keluarkan "${memberName}" dari Kartu Keluarga No. ${ownerNoKK}?`,
+                async () => {
+                    const freshCtx = getLoggedInWargaContext() || resolveCurrentWargaRecord();
+                    const freshNoKK = String(freshCtx?.kk?.noKK || '').trim();
+                    if (!freshNoKK || freshNoKK !== ownerNoKK) {
+                        showToast('Validasi No. KK gagal', true);
+                        return;
+                    }
+                    const fIdx = state.warga.findIndex(w => w.id === ctx.kk.id && String(w.noKK || '').trim() === ownerNoKK);
+                    if (fIdx === -1 || !Array.isArray(state.warga[fIdx].anggota)) return;
+
+                    state.warga[fIdx].anggota.splice(memberIndex, 1);
+                    state.warga[fIdx].jumlahAnggota = Math.max(1, 1 + state.warga[fIdx].anggota.length);
+
+                    if (session && session.role === 'warga' && session.kkId === ctx.kk.id && typeof session.memberIndex === 'number') {
+                        if (session.memberIndex === memberIndex) {
+                            session.memberIndex = null;
+                        } else if (session.memberIndex > memberIndex) {
+                            session.memberIndex = session.memberIndex - 1;
+                        }
+                        try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {}
+                    }
+
+                    await saveState();
+                    showToast(`${memberName} berhasil dikeluarkan dari KK Anda`);
+                }
+            );
+        };
+
         function renderWargaProfil(kk, activeMemberIndex = null, activePerson = null) {
+            const resolved = getLoggedInWargaContext() || resolveCurrentWargaRecord();
+            const targetKk = kk || resolved?.kk || (Array.isArray(state.warga) && state.warga.length > 0 ? state.warga[0] : null);
+            const currentMemberIdx = typeof activeMemberIndex === 'number' ? activeMemberIndex : (resolved?.memberIndex ?? null);
+            const currentPerson = activePerson || resolved?.activeRecord || targetKk;
+            const containerEl = document.getElementById('w-profil-container');
+            if (!containerEl) return;
+
+            if (!targetKk) {
+                containerEl.innerHTML = `
+                    <div class="bg-white rounded-3xl p-5 border border-amber-200 shadow-xs space-y-2">
+                        <div class="flex items-center gap-2 text-amber-800 font-bold text-sm">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span>Data Kartu Keluarga Belum Tersedia</span>
+                        </div>
+                        <p class="text-xs text-slate-600">Silakan hubungi Pengurus RT 001 untuk mendaftarkan atau memperbarui data Kartu Keluarga Anda.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const st = state.settings || INITIAL_DATA.settings;
+            const anggotaArr = normalizeKkMembers(targetKk);
+            const totalAnggota = Math.max(Number(targetKk.jumlahAnggota) || 0, 1 + anggotaArr.length);
+            const kepalaKeluargaNama = (targetKk.kepalaKeluarga || targetKk.nama || '-').toString();
+            const noKKDisplay = (targetKk.noKK || targetKk.nomorKK || '-').toString();
+            const nikKepalaDisplay = (targetKk.nik || '-').toString();
+            const statusWargaDisplay = (targetKk.status || 'Tetap').toString();
+            const alamatDisplay = `${targetKk.alamat || '-'}, RT ${st.rt} / RW ${st.rw}, Kel. ${st.kelurahan}`;
+            const tglLahirDisplay = formatTgl(currentPerson?.tanggalLahir || targetKk.tanggalLahir);
+            const jenisKelaminDisplay = (currentPerson?.jenisKelamin || targetKk.jenisKelamin || '-').toString();
+            const namaAyahDisplay = (currentPerson?.namaAyah || targetKk.namaAyah || '-').toString();
+            const namaIbuDisplay = (currentPerson?.namaIbu || targetKk.namaIbu || '-').toString();
+            const canManageOwnKK = Boolean(session && session.role === 'warga' && resolved && resolved.kk && resolved.kk.id === targetKk.id && String(resolved.kk.noKK || '').trim() !== '');
+
+            const kepalaBadge = currentMemberIdx === null
+                ? `<span class="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">Akun Aktif</span>`
+                : `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Kepala Keluarga</span>`;
+
+            const anggotaCardsHtml = anggotaArr.length > 0
+                ? anggotaArr.map((m, i) => {
+                    const isCurrentMember = typeof currentMemberIdx === 'number' && currentMemberIdx === i;
+                    return `
+                        <div class="p-3.5 rounded-2xl ${isCurrentMember ? 'bg-emerald-50/80 border-emerald-300' : 'bg-slate-50 border-slate-200/80'} border space-y-1.5 text-xs">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="font-extrabold text-slate-900 truncate">${i + 1}. ${m.nama}</span>
+                                    ${isCurrentMember ? '<span class="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shrink-0">Akun Aktif</span>' : ''}
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">${m.hubungan}</span>
+                                    ${canManageOwnKK ? `<button type="button" onclick="keluarkanAnggotaKKSendiri(${i})" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold transition">Keluarkan</button>` : ''}
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 text-slate-600">
+                                <p><span class="text-slate-400">NIK:</span> <span class="font-mono font-semibold text-slate-800">${m.nik}</span></p>
+                                <p><span class="text-slate-400">Tanggal Lahir:</span> <span class="font-semibold text-slate-800">${formatTgl(m.tanggalLahir)}</span></p>
+                                <p><span class="text-slate-400">Jenis Kelamin:</span> <span class="font-semibold text-slate-800">${m.jenisKelamin}</span></p>
+                                <p><span class="text-slate-400">Orang Tua:</span> <span class="font-semibold text-slate-800">${m.namaAyah} / ${m.namaIbu}</span></p>
+                            </div>
+                        </div>
+                    `;
+                }).join('')
+                : `
+                    <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70 text-xs text-slate-500">
+                        Belum ada anggota keluarga tambahan yang tercatat pada berkas KK ini.
+                    </div>
+                `;
+
+            containerEl.innerHTML = `
+                <div class="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-4">
+                    <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-extrabold text-lg shrink-0">
+                                <i class="fa-solid fa-people-roof"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">Profil Kartu Keluarga</span>
+                                <h3 class="font-extrabold text-base text-slate-900 truncate">${kepalaKeluargaNama}</h3>
+                                <p class="text-xs font-mono text-slate-500 truncate">No. KK: ${noKKDisplay}</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${statusWargaDisplay === 'Tetap' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                            ${statusWargaDisplay}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button type="button" onclick="openChangePasswordModal()" class="py-2.5 px-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+                            <i class="fa-solid fa-key"></i>
+                            <span>Ganti Password</span>
+                        </button>
+                        <button type="button" onclick="switchWargaView('layanan', document.querySelector('#w-nav [data-wview=\\'layanan\\']'))" class="py-2.5 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+                            <i class="fa-solid fa-file-signature"></i>
+                            <span>Ajukan Surat</span>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5 text-xs">
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Kepala Keluarga</span>
+                            <span class="font-bold text-slate-900">${kepalaKeluargaNama}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Jumlah Anggota</span>
+                            <span class="font-bold text-emerald-700">${totalAnggota} Jiwa (${anggotaArr.length} Anggota)</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">NIK Kepala KK</span>
+                            <span class="font-mono font-bold text-slate-900">${nikKepalaDisplay}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Tanggal Lahir</span>
+                            <span class="font-bold text-slate-900">${tglLahirDisplay}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Jenis Kelamin</span>
+                            <span class="font-bold text-slate-900">${jenisKelaminDisplay}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Status Kependudukan</span>
+                            <span class="font-bold text-slate-900">${statusWargaDisplay}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Nama Ayah</span>
+                            <span class="font-bold text-slate-900">${namaAyahDisplay}</span>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50">
+                            <span class="text-slate-400 block">Nama Ibu</span>
+                            <span class="font-bold text-slate-900">${namaIbuDisplay}</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 rounded-2xl bg-slate-50 text-xs">
+                        <span class="text-slate-400 block">Alamat / Blok Lingkungan</span>
+                        <span class="font-bold text-slate-900">${alamatDisplay}</span>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-users text-emerald-600"></i> Susunan Keluarga dalam KK
+                        </h4>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold">${totalAnggota} Jiwa</span>
+                            ${canManageOwnKK ? `<button type="button" onclick="openWargaTambahAnggotaModal()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 transition"><i class="fa-solid fa-user-plus"></i><span>+ Tambah Anggota</span></button>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-2xl ${currentMemberIdx === null ? 'bg-emerald-50/80 border-emerald-300' : 'bg-slate-50 border-slate-200/80'} border space-y-1.5 text-xs">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 min-w-0">
+                                <span class="font-extrabold text-slate-900 truncate">${kepalaKeluargaNama}</span>
+                                ${kepalaBadge}
+                            </div>
+                            <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold shrink-0">Kepala KK</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 text-slate-600">
+                            <p><span class="text-slate-400">NIK:</span> <span class="font-mono font-semibold text-slate-800">${nikKepalaDisplay}</span></p>
+                            <p><span class="text-slate-400">Tanggal Lahir:</span> <span class="font-semibold text-slate-800">${formatTgl(targetKk.tanggalLahir)}</span></p>
+                            <p><span class="text-slate-400">Jenis Kelamin:</span> <span class="font-semibold text-slate-800">${targetKk.jenisKelamin || '-'}</span></p>
+                            <p><span class="text-slate-400">Orang Tua:</span> <span class="font-semibold text-slate-800">${targetKk.namaAyah || '-'} / ${targetKk.namaIbu || '-'}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2.5">
+                        ${anggotaCardsHtml}
+                    </div>
+
+                    ${targetKk.anggotaDetail ? `
+                        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70 text-xs text-slate-700">
+                            <span class="text-[11px] font-bold text-slate-400 block mb-0.5">Catatan Tambahan KK</span>
+                            ${targetKk.anggotaDetail}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+```[cite: 4]
+
+Setelah menempelkan dua bagian ini dan melakukan *commit* ke branch `main`, Anda bisa masuk menggunakan akun warga lalu membuka tab **Profil KK** untuk menguji penambahan dan pengeluaran anggota KK sendiri. Jika ada pesan error saat pengujian, kirimkan saja detailnya agar bisa langsung dibantu.
             const resolved = getLoggedInWargaContext() || resolveCurrentWargaRecord();
             const targetKk = kk || resolved?.kk || (Array.isArray(state.warga) && state.warga.length > 0 ? state.warga[0] : null);
             const currentMemberIdx = typeof activeMemberIndex === 'number' ? activeMemberIndex : (resolved?.memberIndex ?? null);
