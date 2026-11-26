@@ -3679,72 +3679,7 @@
             startFirebaseRealtimeStream();
             cloudPollTimer = setInterval(() => pullStateFromFirebase(false), 10000);
         });
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
-<script>
-const FCM_VAPID_KEY = "BLsr8kXXu6x7UydqB7ICEpoIxLkL8AuqN7qXI1Zw6slE6vTUpyRNtPospFvQ3U_ItDOnXoRG7WEIrE4qLLbQedg";
-
-if (window.firebase && firebase.apps && !firebase.apps.length) {
-  firebase.initializeApp({
-    apiKey: "AIzaSyDCXX6xk8C3WvAUAw1iy_qDO228MQ0ejIs",
-    authDomain: "data-warga-rt01-8df1b.firebaseapp.com",
-    databaseURL: "https://data-warga-rt01-8df1b-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "data-warga-rt01-8df1b",
-    storageBucket: "data-warga-rt01-8df1b.firebasedatabase.app",
-    messagingSenderId: "234498037736",
-    appId: "1:234498037736:web:3ea00385620d712342365d"
-  });
-}
-
-async function aktifkanPushNotifikasiWarga(nikOrId = "umum") {
-  try {
-    if (!("Notification" in window)) return;
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return;
-
-    let swReg = null;
-    if ("serviceWorker" in navigator) {
-      swReg = await navigator.serviceWorker.register("./sw.js");
-      await navigator.serviceWorker.ready;
-    }
-
-    if (window.firebase && typeof firebase.messaging === "function" && swReg && FCM_VAPID_KEY && !FCM_VAPID_KEY.startsWith("ISI_")) {
-      const messaging = firebase.messaging();
-      const token = await messaging.getToken({
-        vapidKey: FCM_VAPID_KEY,
-        serviceWorkerRegistration: swReg
-      });
-
-      const dbUrl = (typeof state !== "undefined" && (state.cloudConfig?.databaseURL || state.settings?.firebaseUrl))
-        || "https://data-warga-rt01-8df1b-default-rtdb.asia-southeast1.firebasedatabase.app";
-      const syncKey = (typeof state !== "undefined" && state.cloudConfig?.syncKey) || "rt01_utama";
-
-      if (token && dbUrl) {
-        const baseUrl = String(dbUrl).replace(/\/+$/, "");
-        const safeKey = encodeURIComponent(String(nikOrId || "umum").replace(/[^a-zA-Z0-9_-]/g, "_"));
-        const rawDev = localStorage.getItem("rt01_device_id") || ("dev_" + Math.random().toString(36).slice(2, 10));
-        localStorage.setItem("rt01_device_id", rawDev);
-        const deviceId = encodeURIComponent(rawDev);
-
-        await fetch(`${baseUrl}/${encodeURIComponent(syncKey)}/fcmTokens/${safeKey}_${deviceId}.json`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, updatedAt: new Date().toISOString() })
-        });
-      }
-    }
-  } catch (err) {
-    console.error("Gagal mengaktifkan push notifikasi:", err);
-  }
-}
-
-window.addEventListener("load", () => {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch((err) => {
-      console.error("Registrasi sw.js gagal:", err);
-    });
-  }
-});
-</script>
+    </script>
 </body>
+</html>
 </html>
